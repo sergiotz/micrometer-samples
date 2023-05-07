@@ -1,0 +1,86 @@
+version: 2.1
+
+executors:
+  machine-executor:
+    working_directory: ~/micrometer-samples
+    environment:
+      GRADLE_OPTS: '-Dorg.gradle.jvmargs="-Xmx2048m -XX:+HeapDumpOnOutOfMemoryError"'
+    machine:
+      image: ubuntu-2204:2022.07.1
+
+commands:
+  gradlew-build:
+    description: 'Run a Gradle build using the wrapper'
+    parameters:
+      command:
+        type: string
+        default: 'build'
+    steps:
+      - checkout
+      - restore_cache:
+          keys:
+            - gradle-dependencies-{{ .Branch }}-{{ checksum "build.gradle" }}
+            - gradle-dependencies-{{ .Branch }}
+      - run:
+          name: downloadDependencies
+          command: ./gradlew downloadDependencies --console=plain --refresh-dependencies --no-build-cache
+      - save_cache:
+          key: gradle-dependencies-{{ .Branch }}-{{ checksum "build.gradle" }}
+          paths:
+            - ~/.gradle
+      - run:
+          name: print java version
+          command: java --version
+      - run:
+          name: run gradle command
+          command: ./gradlew << parameters.command >> --refresh-dependencies
+      - run:
+          name: collect test reports
+          when: always
+          command: |
+            mkdir -p ~/micrometer-samples/test-results/junit/
+            find . -type f -regex ".*/build/test-results/.*xml" -exec cp {} ~/micrometer-samples/test-results/junit/ \;
+      - store_test_results:
+          path: ~/micrometer-samples/test-results/
+      - store_artifacts:
+          path: ~/micrometer-samples/test-results/
+
+jobs:
+  brave-build:
+    executor: machine-executor
+    steps:
+      - gradlew-build
+  otel-build:
+    executor: machine-executor
+    steps:
+      - gradlew-build:
+          command: -Potel
+  nightly-brave-build:
+    executor: machine-executor
+    steps:
+      - gradlew-build:
+          command: --no-build-cache
+  nightly-otel-build:
+    executor: machine-executor
+    steps:
+      - gradlew-build:
+          command: -Potel --no-build-cache
+
+workflows:
+  version: 2
+  build_prs:
+    jobs:
+      - brave-build
+      - otel-build
+  nightly:
+    triggers:
+      - schedule:
+          cron: '0 0 * * *'
+          filters:
+            branches:
+              only:
+                - main
+                - latest-snapshots
+    jobs:
+      - nightly-brave-build
+      - nightly-otel-build

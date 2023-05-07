@@ -1,0 +1,23 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id 'com.gradle.enterprise' version '3.12.6'
+    id 'io.spring.ge.conventions' version '0.0.13'
+}
+
+rootProject.name = 'micrometer-samples'
+
+buildCache {
+    remote(HttpBuildCache) {
+        url = 'https://ge.micrometer.io/cache/'
+    }
+}
+gradleEnterprise {
+    server = 'https://ge.micrometer.io'
+}
+
+include 'micrometer-samples-boot3-web'
